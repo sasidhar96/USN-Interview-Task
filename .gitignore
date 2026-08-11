@@ -1,0 +1,27 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+tmp/
+.DS_Store
+
+# Third-party copyrighted journal PDFs -- cited by DOI in README.md/CLAUDE.md,
+# not redistributed from this public repo.
+*.pdf
+
+# CINELDI dataset: keep only the 50-bus rural grid actually used
+# (src/case_data.py DEFAULT_GRID); the other three grid variants and the raw
+# zip in the same Zenodo release aren't read by any code here.
+data/raw/dataset.zip
+data/raw/cineldi_lv/dataset/39_bus_semi_urban_reference_grid/
+data/raw/cineldi_lv/dataset/56_bus_semi_urban_reference_grid/
+data/raw/cineldi_lv/dataset/80_bus_rural_reference_grid/
+
+# Run logs (verbose IPOPT chatter) and superseded/pilot result files --
+# the current, authoritative dataset is monthly_hourly_waterval_with_losses.csv
+results/*.log
+results/monthly_hourly.csv
+results/monthly_hourly_skipped.txt
+results/monthly_hourly_pilot.csv
+results/monthly_hourly_pilot_skipped.txt
+results/monthly_hourly_waterval_pilot.csv

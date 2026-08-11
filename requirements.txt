@@ -1,0 +1,12 @@
+numpy==2.4.6
+scipy==1.18.0
+pandas==2.3.3
+matplotlib==3.11.1
+pandapower==3.5.4
+pyomo==6.10.1
+cyipopt==1.7.0
+pybind11==3.1.0
+pytest==9.1.1
+networkx==3.6.1
+numba==0.66.0
+syngenlib @ git+https://github.com/USN-SysOpt/syngenlib.git@e19de798dbb533ccf96eae2a938b9f4252ad2a73
