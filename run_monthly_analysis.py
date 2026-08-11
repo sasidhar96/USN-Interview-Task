@@ -95,6 +95,8 @@ def solve_hour(mach: dict, timestamp, p_cost_gen: float = 0.0,
     settlements = {
         "1_capacity": capacity(mach, coordinated, ENERGY_PRICE, PI_CAP, p_cost_gen=p_cost_gen),
         "2a_variable_nodal": variable(mach, coordinated, ENERGY_PRICE, pricing="nodal", p_cost_gen=p_cost_gen),
+        "2b_variable_uniform": variable(mach, coordinated, ENERGY_PRICE, pricing="uniform", p_cost_gen=p_cost_gen),
+        "2c_variable_awu": variable(mach, coordinated, ENERGY_PRICE, pricing="awu", p_cost_gen=p_cost_gen),
         "3_hybrid": hybrid(mach, coordinated, ENERGY_PRICE, PI_CAP, pricing="nodal", p_cost_gen=p_cost_gen),
     }
     # Counterparty check (added after review found a ~30x mismatch in the
@@ -138,9 +140,18 @@ def solve_hour(mach: dict, timestamp, p_cost_gen: float = 0.0,
         row[f"q_{tag}_mvar"] = coordinated.q_gen[b]
         row[f"v_{tag}"] = coordinated.v[b]
         row[f"lambda_q_{tag}"] = coordinated.q_price[b]
+        row[f"lambda_p_{tag}"] = coordinated.p_price[b]
         row[f"{tag}_field_binding"] = coordinated.binding[b]["field"]
         row[f"{tag}_stator_binding"] = coordinated.binding[b]["stator"]
         row[f"{tag}_underexcited_binding"] = coordinated.binding[b]["underexcited"]
+    # Every bus, not just generator buses -- for the spatial (distance-to-
+    # generator vs. price/voltage) analysis. Cheap: coordinated.v/p_price/
+    # q_price already cover the full network (src/opf.py loops over all ppc
+    # buses), this was previously just not being extracted into the row.
+    for b in coordinated.v:
+        row[f"v_bus{b}"] = coordinated.v[b]
+        row[f"lambda_q_bus{b}"] = coordinated.q_price[b]
+        row[f"lambda_p_bus{b}"] = coordinated.p_price[b]
     return row
 
 
@@ -166,13 +177,23 @@ def _solve_one(args) -> dict | None:
     closure (that's exactly what broke the differential-evolution script
     earlier this session; spawn-based multiprocessing needs a module-level
     function it can re-import in each worker process).
+
+    Wrapped in try/except: a full-year run is ~8760 hours and must not die
+    because one hour raised something unexpected (a data lookup edge case,
+    a transient solver crash) -- that hour is recorded as skipped, with the
+    exception text, and the run continues. Never let one bad hour take down
+    the other 8759.
     """
     config_label, mach, timestamp, p_cost_gen = args
-    fixed, unity = _baseline_convention(mach)
-    row = solve_hour(mach, timestamp, p_cost_gen=p_cost_gen,
-                      fixed_voltage_buses=fixed, unity_pf_buses=unity)
+    try:
+        fixed, unity = _baseline_convention(mach)
+        row = solve_hour(mach, timestamp, p_cost_gen=p_cost_gen,
+                          fixed_voltage_buses=fixed, unity_pf_buses=unity)
+    except Exception as exc:  # noqa: BLE001 -- deliberately broad, see docstring
+        return {"config": config_label, "timestamp": timestamp, "_skipped": True,
+                "_error": f"{type(exc).__name__}: {exc}"}
     if row is None:
-        return {"config": config_label, "timestamp": timestamp, "_skipped": True}
+        return {"config": config_label, "timestamp": timestamp, "_skipped": True, "_error": None}
     row["config"] = config_label
     row["_skipped"] = False
     return row
@@ -180,7 +201,10 @@ def _solve_one(args) -> dict | None:
 
 def run_all_configs_parallel(months: set[int] = STUDY_MONTHS, p_cost_gen: float = ENERGY_PRICE,
                               n_workers: int = 7, limit: int | None = None,
-                              shards: tuple[int, ...] | None = None, n_shards: int = 1) -> tuple[pd.DataFrame, list]:
+                              shards: tuple[int, ...] | None = None, n_shards: int = 1,
+                              configs: dict | None = None,
+                              checkpoint_path: str | None = None,
+                              checkpoint_every: int = 500) -> tuple[pd.DataFrame, list]:
     """All 4 fleet configurations x the full study period, solved as one flat
     pool of independent (config, hour) tasks across n_workers processes.
     Independent tasks pooled together (not one config at a time) keeps every
@@ -195,10 +219,24 @@ def run_all_configs_parallel(months: set[int] = STUDY_MONTHS, p_cost_gen: float 
     not a naive contiguous slice (which would put every 4gen_all task on one
     side, since configs are the outer loop). Pass e.g. shards=(0,) n_shards=3
     for the 1/3 share, shards=(1,2) n_shards=3 for the 2/3 share.
+
+    `configs` overrides the default 4-way fleet-size sweep (`_fleet_configs()`)
+    -- pass e.g. `{"4gen_all": machines()}` to run only the validated
+    4-generator fleet (the full-year run uses this; the 2/3-gen comparisons
+    stay representative-hour-only, see `generator_count_comparison`).
+
+    `checkpoint_path`, if given, writes the accumulated results to that CSV
+    every `checkpoint_every` completed tasks -- for a run long enough that
+    losing it all to a mid-run crash (or an accidental process kill) would
+    actually hurt. Each checkpoint is a full overwrite with everything
+    solved so far, not an append -- always resumable by reading the latest
+    checkpoint, at the cost of only ever losing at most `checkpoint_every`
+    tasks' worth of work, not the whole run.
     """
     import multiprocessing as mp
 
-    configs = _fleet_configs()
+    if configs is None:
+        configs = _fleet_configs()
     p, _ = load_profiles()
     hours = p.index[p.index.month.isin(months)]
     if limit is not None:
@@ -211,18 +249,27 @@ def run_all_configs_parallel(months: set[int] = STUDY_MONTHS, p_cost_gen: float 
           f"{f', shard {shards} of {n_shards}' if shards is not None else ''}), "
           f"{n_workers} worker processes", flush=True)
 
-    rows, skipped = [], []
+    rows, skipped, errors = [], [], []
     t0 = time.time()
     with mp.Pool(n_workers) as pool:
         for i, result in enumerate(pool.imap_unordered(_solve_one, tasks, chunksize=4)):
             if result["_skipped"]:
                 skipped.append(f"{result['config']} {result['timestamp']}")
+                if result.get("_error"):
+                    errors.append(f"{result['config']} {result['timestamp']}: {result['_error']}")
             else:
                 rows.append(result)
             if (i + 1) % 200 == 0 or (i + 1) == len(tasks):
                 elapsed = time.time() - t0
                 print(f"  {i+1}/{len(tasks)} tasks, {elapsed:.0f}s elapsed, "
-                      f"{len(skipped)} skipped", flush=True)
+                      f"{len(skipped)} skipped ({len(errors)} errors)", flush=True)
+            if checkpoint_path and (i + 1) % checkpoint_every == 0:
+                pd.DataFrame(rows).to_csv(checkpoint_path, index=False)
+                if errors:
+                    from pathlib import Path as _Path
+                    _Path(checkpoint_path).with_suffix(".errors.txt").write_text("\n".join(errors))
+    if checkpoint_path:
+        pd.DataFrame(rows).to_csv(checkpoint_path, index=False)
     return pd.DataFrame(rows), skipped
 
 
