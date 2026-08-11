@@ -28,6 +28,20 @@ from .opf import OPFResult
 # as the zone definition for area-wise-uniform pricing.
 FEEDER_ZONES: dict[int, str] = {b: ("feeder1" if b <= 11 else "feeder2") for b in range(1, 15)}
 
+# Three zones instead of two: split feeder 1 by real topological hop-distance
+# from its own head (bus 1) -- buses <=3 hops away are "near", the rest are
+# "far" -- keeping feeder 2 as its own zone (it's short enough, 3 buses, that
+# splitting it further would leave a 1-bus zone). Hop distance computed via
+# BFS over net.line/net.trafo, the same graph used for the placement
+# experiment's remote-bus selection -- not an arbitrary redraw, the same
+# topological logic already shown to correlate with nodal price.
+THREE_ZONES: dict[int, str] = {
+    1: "feeder1_near", 3: "feeder1_near", 4: "feeder1_near", 8: "feeder1_near",
+    5: "feeder1_far", 6: "feeder1_far", 7: "feeder1_far", 9: "feeder1_far",
+    10: "feeder1_far", 11: "feeder1_far",
+    12: "feeder2", 13: "feeder2", 14: "feeder2",
+}
+
 
 @dataclass
 class Settlement:
@@ -121,14 +135,16 @@ def _awu_price(machines: dict[int, Machine], r: OPFResult, zones=FEEDER_ZONES) -
 
 def variable(
     machines: dict[int, Machine], r: OPFResult, energy_price: float,
-    pricing: str = "nodal", p_cost_gen: float = 0.0,
+    pricing: str = "nodal", p_cost_gen: float = 0.0, zones: dict | None = None,
 ) -> Settlement:
     """Scheme 2 -- utilisation payment: price * delivered Q. Same settlement
     rule Potter et al. use (payment = d-LMP * Q). `pricing` selects which of
     Wolgast et al.'s three pricing bases sets that price:
       "nodal"   -- this work's proposal, r.q_price[bus] directly (default)
       "uniform" -- one averaged price for every machine (see _uniform_price)
-      "awu"     -- one averaged price per feeder zone (see _awu_price)
+      "awu"     -- one averaged price per zone (see _awu_price); `zones`
+                   defaults to the 2-zone FEEDER_ZONES split, pass
+                   THREE_ZONES for the finer-grained variant
     """
     if pricing == "nodal":
         price = {b: r.q_price[b] for b in machines}
@@ -138,12 +154,37 @@ def variable(
         price = {b: p for b in machines}
         label = "2b_variable_uniform"
     elif pricing == "awu":
-        price = _awu_price(machines, r)
-        label = "2c_variable_awu"
+        price = _awu_price(machines, r, zones=zones if zones is not None else FEEDER_ZONES)
+        label = "2c_variable_awu" if zones is None else "2d_variable_awu3"
     else:
         raise ValueError(f"unknown pricing basis: {pricing!r}")
     payment = {b: price[b] * r.q_gen[b] for b in machines}
     return _settle(label, machines, r, energy_price, payment, p_cost_gen)
+
+
+def performance_adjusted_capacity(
+    machines: dict[int, Machine], r: OPFResult, energy_price: float, pi_cap: float,
+    p_cost_gen: float = 0.0,
+) -> Settlement:
+    """Scheme 4 -- capacity payment scaled by how much of that capacity was
+    actually used this hour, fixing the sharpest critique of plain `capacity()`:
+    a flat rate has ZERO marginal incentive to deliver, since it pays the
+    same whether a generator delivers its full reactive capability or none.
+
+    payment_g = pi_cap * S_rated_g * utilisation_g,  utilisation_g = |Q_g| / S_rated_g
+
+    Which simplifies to payment_g = pi_cap * |Q_g| -- stated plainly, not
+    hidden: this reduces to a utilisation payment, just priced at the real
+    Statnett-sourced capacity rate (an ADMINISTERED price) rather than the
+    OPF's own nodal dual (a MARGINAL-COST-derived price). That is the actual
+    distinction from `variable(pricing="nodal")` -- a different, independently
+    sourced price level, not a different formula shape. Genuinely different
+    from plain `capacity()` in the one way that matters: a generator that
+    delivers nothing gets paid nothing, same as any real
+    availability-plus-performance instrument would require.
+    """
+    payment = {b: pi_cap * abs(r.q_gen[b]) for b, m in machines.items()}
+    return _settle("4_performance_capacity", machines, r, energy_price, payment, p_cost_gen)
 
 
 def load_side_charge(net, r: OPFResult) -> dict:

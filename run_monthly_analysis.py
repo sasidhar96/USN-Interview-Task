@@ -26,7 +26,10 @@ import pandas as pd
 
 from src.case_data import GEN_BUSES, build_case_from_hour, load_profiles
 from src.cost_models import PhysicalCost
-from src.settlement import capacity, cost_recovery, hybrid, load_side_charge, variable
+from src.settlement import (
+    THREE_ZONES, capacity, cost_recovery, hybrid, load_side_charge,
+    performance_adjusted_capacity, variable,
+)
 from run_experiments import (
     BASELINE_FIXED_VOLTAGE_BUSES, BASELINE_UNITY_PF_BUSES,
     ENERGY_PRICE, PI_CAP, Q_IMPORT_PRICE, Q_IMPORT_PRICE_SUMMER, V_SETPOINT, machines, solve,
@@ -97,6 +100,8 @@ def solve_hour(mach: dict, timestamp, p_cost_gen: float = 0.0,
         "2a_variable_nodal": variable(mach, coordinated, ENERGY_PRICE, pricing="nodal", p_cost_gen=p_cost_gen),
         "2b_variable_uniform": variable(mach, coordinated, ENERGY_PRICE, pricing="uniform", p_cost_gen=p_cost_gen),
         "2c_variable_awu": variable(mach, coordinated, ENERGY_PRICE, pricing="awu", p_cost_gen=p_cost_gen),
+        "2d_variable_awu3": variable(mach, coordinated, ENERGY_PRICE, pricing="awu", zones=THREE_ZONES, p_cost_gen=p_cost_gen),
+        "4_performance_capacity": performance_adjusted_capacity(mach, coordinated, ENERGY_PRICE, PI_CAP, p_cost_gen=p_cost_gen),
         "3_hybrid": hybrid(mach, coordinated, ENERGY_PRICE, PI_CAP, pricing="nodal", p_cost_gen=p_cost_gen),
     }
     # Counterparty check (added after review found a ~30x mismatch in the
