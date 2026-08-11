@@ -36,13 +36,20 @@ class AssumedCost:
 class PhysicalCost:
     """Case B — derived from the machine.
 
-    C^Q = lambda_E [ P_loss(P, Q) - P_loss(P, Q*) ]
+    C^Q = lambda_E [ P_loss(P, Q) - P_loss(P, Q_ref(P,V)) ]
 
-    Cost is measured against the machine's own loss-minimising reactive point
-    Q*, not against Q = 0. This follows the accumulated-average-efficiency
-    method: deviation from the minimum-loss path through the capability diagram
-    is the cost of the service. Non-negative by construction, and zero at a
-    physically meaningful — slightly underexcited — operating point.
+    Cost is measured against Q_ref(P,V) -- the machine's own loss-minimising
+    reactive point Q*(V), clamped up to the underexcitation floor at this P
+    when Q*(V) alone isn't actually reachable there (see `Machine.q_ref`'s
+    docstring; caught by external review -- Q* ignored that its own
+    reachability depends on P, which overstated cost at low P, exactly where
+    G2-G4 spend most of their time in this study). Q_ref is never Q=0.
+
+    This follows the accumulated-average-efficiency method: deviation from
+    the minimum-loss path through the (feasible) capability diagram is the
+    cost of the service. Non-negative by construction, and zero at a
+    physically meaningful, reachable, — usually slightly underexcited —
+    operating point.
 
     Note this contradicts the 0.95-0.95 pricing deadband: cost inside the band
     is non-zero and asymmetric about Q = 0.
@@ -54,9 +61,11 @@ class PhysicalCost:
         self.energy_price = energy_price
 
     def __call__(self, machine: Machine, p, q, v):
-        # P cancels between the two loss terms; kept explicit for readability.
+        # P does NOT cancel between the two loss terms here (unlike the old
+        # Q*(V)-only reference) -- Q_ref depends on P too, so both terms are
+        # kept explicit rather than assumed to simplify.
         return self.energy_price * (
-            machine.loss(p, q, v) - machine.loss(p, machine.q_star(v), v)
+            machine.loss(p, q, v) - machine.loss(p, machine.q_ref(p, v), v)
         )
 
 

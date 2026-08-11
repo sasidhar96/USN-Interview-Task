@@ -7,24 +7,25 @@ from src.cost_models import AssumedCost, DeadbandCost, PhysicalCost
 from src.machine import Machine
 from src.case_data import build_case
 from src.opf import solve
+from run_experiments import GEN_BUSES, machines as _production_machines
 
 S_BASE = 1.0
 
 
 def g1() -> Machine:
-    # Karekezi, Melfald, Oyvang & Noland (2023), IEEE TEC 38(2), Tables I-II --
-    # 103 MVA reference machine, verified directly against the PDF.
-    return Machine.from_nameplate(
-        "G1", 8.0, S_BASE, cos_phi=0.90, x_d_pu=1.087, r_a_pu=0.002,
-        rotor_loss_frac=(15.88 + 175.78) / 103_000, p_max_pu=0.85, p_min_pu=0.15,
-    )
+    # Pulled from run_experiments.machines() -- the actual production
+    # fleet -- not a hand-duplicated parameter set. External review caught
+    # that this file's own copy had drifted from production (r_a_pu=0.002
+    # here vs. the corrected 0.0026862 in run_experiments.py after the
+    # stray-load-loss fix), so every test below was silently exercising a
+    # machine the study doesn't actually use. One source of truth now;
+    # Karekezi et al. (2023) IEEE TEC 38(2) Tables I-II citation lives in
+    # run_experiments.machines()'s own docstring.
+    return _production_machines()[GEN_BUSES["G1"]]
 
 
 def g2() -> Machine:
-    return Machine.from_nameplate(
-        "G2", 5.0, S_BASE, cos_phi=0.90, x_d_pu=1.3, r_a_pu=0.002,
-        rotor_loss_frac=0.0024, p_max_pu=0.85, p_min_pu=0.15,
-    )
+    return _production_machines()[GEN_BUSES["G2"]]
 
 
 def test_q_star_is_negative():
@@ -60,12 +61,20 @@ def test_loss_minimum_at_q_star():
 
 
 def test_cost_is_nonnegative():
-    """C^Q >= 0 everywhere, and exactly zero at Q*."""
+    """C^Q >= 0 everywhere, and (near) zero at the machine's own Q_ref(P,V).
+
+    Tolerance is 1e-4, not 1e-12: Q_ref smooths a max(floor, Q*) with a
+    sqrt((a-b)^2+eps) kink (eps=1e-6, see Machine.q_ref) so it stays
+    differentiable for IPOPT -- the same reason DeadbandCost's own test
+    already uses an eps-aware tolerance rather than an exact one. A hard,
+    unsmoothed max() would pass this test at 1e-12 but stall the solver at
+    the kink, which is the worse failure mode.
+    """
     cost = PhysicalCost(70.0)
     for m in (g1(), g2()):
         for q in np.linspace(-m.s_rated, m.s_rated, 501):
-            assert cost(m, 0.5 * m.p_max, q, 1.0) >= -1e-12
-        assert cost(m, 0.5 * m.p_max, m.q_star(1.0), 1.0) == pytest.approx(0.0, abs=1e-12)
+            assert cost(m, 0.5 * m.p_max, q, 1.0) >= -1e-4
+        assert cost(m, 0.5 * m.p_max, m.q_ref(0.5 * m.p_max, 1.0), 1.0) == pytest.approx(0.0, abs=1e-4)
 
 
 def test_capability_limits_consistent():

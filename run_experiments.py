@@ -49,23 +49,43 @@ V_SETPOINT = 1.02  # pu -- Scheme 0 (regulated obligation) AVR setpoint
 BASELINE_FIXED_VOLTAGE_BUSES = {GEN_BUSES["G1"]: V_SETPOINT}
 BASELINE_UNITY_PF_BUSES = {GEN_BUSES["G2"], GEN_BUSES["G3"], GEN_BUSES["G4"]}
 
-# Reactive tariff. Lnett high-voltage winter rate, verified against the
-# tariffhefte 1 Jan 2026: 40 NOK/kVAr/month. Converted at an approximate,
-# NOT independently verified FX rate (11.5 NOK/EUR) and applied under the
-# single-period convention from DESIGN.md SS8: in a one-hour snapshot, the
-# marginal cost of one more kVAr of peak *is* the monthly capacity charge, so
-# the monthly rate is used directly as an EUR/MVArh-equivalent hourly price.
-# This is a real Norwegian *withdrawal* tariff, used here as a proxy for the
-# value of reactive supply -- not a payment Norway actually makes to
-# generators. See DESIGN.md SS7 for the caveat.
+# Reactive tariff, RELABELLED after external review -- read this before
+# trusting the number. Source: Lnett HV winter rate, tariffhefte 1 Jan 2026,
+# 40 NOK/kVAr/MONTH -- a peak-setting capacity charge, not a per-hour
+# marginal price. The single-period convention this study runs under (one
+# independent OPF per hour, no monthly peak-tracking state) cannot represent
+# a true monthly-peak tariff at all -- there is no "this hour's contribution
+# to the eventual monthly max" state to charge. What's actually implemented
+# is an ASSUMED FLAT HOURLY UTILISATION PRICE, chosen to be the same order of
+# magnitude as a naive energy-spread of the real tariff (40,000 EUR/MVAr/
+# month / 730 h/month = 4.76 EUR/MVArh, vs the 3.478 EUR/MVArh used below --
+# both defensible-magnitude, neither a precise derivation of an hourly
+# marginal cost from a monthly peak charge). Two honest options if this
+# needs to be tighter: (a) state it plainly as an assumed utilisation price
+# with this order-of-magnitude justification, not as "the Lnett rate,"
+# or (b) implement the real peak-charge structure properly at a MONTHLY
+# settlement layer (`pi_cap_monthly * max_t[|Q_interface,t| - Q_free]`,
+# using the monthly max of already-solved hourly Q_interface, not inside
+# the hourly OPF objective itself). This file keeps (a) for the OPF -- the
+# number below is an assumed price, carried at the same order of magnitude
+# as the real tariff, not the real tariff correctly integrated.
 _NOK_PER_EUR = 11.5
-Q_IMPORT_PRICE = 40.0 / _NOK_PER_EUR  # EUR/MVArh, HV WINTER rate -- default used below
-Q_IMPORT_PRICE_SUMMER = 5.0 / _NOK_PER_EUR  # EUR/MVArh, HV SUMMER rate (Apr-Sep)
-# Statnett's actual fos SS15 generator-facing capacity rate, read directly from
-# "Vedtak om levering og betaling for systemtjenester 2024" (18.12.2023, ref.
-# 2023/3485), SS3 "Reaktiv effekt": fixed payment model B = Y(MVA) x S(kr/MVA),
-# S = kr 250 per installed MVA per year for 2024 -- a real, generator-facing
-# rate, not a withdrawal tariff reused as a proxy.
+Q_IMPORT_PRICE = 40.0 / _NOK_PER_EUR  # EUR/MVArh, ASSUMED utilisation price (see caveat above) -- HV winter magnitude
+Q_IMPORT_PRICE_SUMMER = 5.0 / _NOK_PER_EUR  # EUR/MVArh, ASSUMED utilisation price -- HV summer magnitude
+# Statnett's fos SS15 generator-facing capacity rate for 2024, read directly
+# from "Vedtak om levering og betaling for systemtjenester 2024" (18.12.2023,
+# ref. 2023/3485), SS3 "Reaktiv effekt": fixed payment model B = Y(MVA) x
+# S(kr/MVA), S = kr 250 per installed MVA per year for 2024 -- a real,
+# generator-facing rate, not a withdrawal tariff reused as a proxy.
+#
+# RELABELLED after external review: this is the 2024 rate, not verified as
+# the current 2026 rate -- Statnett's 2026 consultation material discusses
+# changes to the fixed-payment model, not checked here. Report this as "the
+# 2024 Statnett reference payment, the closest real Norwegian benchmark,"
+# NOT as "the current rate underpays this fleet by ~10x" -- the honest claim
+# is narrower: "the 2024 reference benchmark would cover ~9-11% of this
+# fleet's modeled cost" (see Q_ref fix above for why the number moved from
+# 9.7%), not a claim about what today's regime actually pays anyone.
 # Converted to an EUR/MVArh-equivalent hourly rate under this study's single-
 # period convention (divide the annual retainer by 8760 h/year):
 #   250 NOK/MVA/yr / 11.5 NOK-per-EUR / 8760 h/yr = 0.00248 EUR/MVArh

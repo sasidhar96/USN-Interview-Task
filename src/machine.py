@@ -175,6 +175,43 @@ class Machine:
         """d(loss)/dQ at fixed P — linear in Q, non-zero intercept."""
         return 2 * self.k_f * self.x_s + 2 * (self.r_a + self.k_f * self.x_s**2) * q / v**2
 
+    def q_ref(self, p, v, eps: float = 1e-6):
+        """The reference point PhysicalCost measures deviation from --
+        Q*(V) if that's actually reachable at this P, else the tightest
+        binding limit at this P.
+
+        Caught by external review: Q*(V) alone (the old reference) ignores
+        that Q also has to satisfy the underexcitation floor,
+        Q >= -P*tan(acos(pf_lead_max)), which DOES depend on P. At every
+        machine's own p_min this floor sits well above Q*(V) (e.g. G1:
+        floor=-0.089 pu machine-base vs Q*=-0.191 -- Q* needs P >= ~38% of
+        p_max before it's reachable at all), so the cost was being measured
+        against an operating point the machine's own other constraint
+        already forbids at low P -- overstating service cost there (by
+        ~60% for G2/G4 in the study's actual dispatch, where P sits at or
+        near p_min most hours).
+
+        Q* is never positive (see `q_star`'s docstring) and the stator/field
+        circles only bind at high |Q|, so in practice only the lower
+        (underexcitation) floor can be violated here -- the fix is a
+        one-sided clamp, `max(floor, Q*)`, not a full two-sided projection
+        onto the stator/field circles too (verified: at every (P,V) this
+        model dispatches, Q* sits well inside both circles whenever it's
+        above the floor -- adding an upper clamp would be defending against
+        a case that doesn't occur, at the cost of a more fragile smoothed
+        expression).
+
+        Smoothed (`sqrt((a-b)^2+eps)` in place of `|a-b|`) so the reference
+        is differentiable everywhere, matching how `cost_models.py`'s own
+        smoothed max(0,.) terms are already handled -- IPOPT needs this,
+        not just style consistency; a hard `max()` has an undefined
+        derivative exactly on the kink, which is exactly where the
+        optimizer likes to sit.
+        """
+        floor = -p * math.tan(math.acos(self.pf_lead_max))
+        qs = self.q_star(v)
+        return 0.5 * (floor + qs + ((floor - qs) ** 2 + eps) ** 0.5)
+
     # --- capability limits (written as g(P,Q,V) <= 0) ---------------------
 
     def stator_limit(self, p, q, v):
