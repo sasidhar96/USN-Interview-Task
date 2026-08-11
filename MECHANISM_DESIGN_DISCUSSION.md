@@ -303,7 +303,42 @@ their DER context; it's right to include it for this project's hydro
 context — same literature, opposite resource, opposite conclusion, both
 correct.
 
-## 6. Recommendation: what to do before running further scenarios
+## 6. The withholding illustration — built, and the answer is a clean "yes, gameable"
+
+`withholding_experiment.py`: G1 reports an inflated reactive cost to the
+OPF (its true `PhysicalCost`, scaled by a `factor`); the OPF believes it and
+dispatches accordingly; every other generator stays truthful; G1's actual
+profit is then computed from its **true** cost (misreporting doesn't change
+physics, only what the optimizer believes). Run across 28 real January
+hours × 3 inflation factors (1.5x, 2x, 3x) = 84 (hour, factor) trials, under
+the nodal scheme (2a).
+
+**Lying was profitable in 84/84 trials, no exceptions.** At factor=2, mean
+true profit rises from 0.040 to 0.366 EUR/h — roughly 9x. Mechanism,
+confirmed directly from the data, not inferred: G1's *own* nodal price is
+(by construction — §5's marginal-cost-equals-price test) its own *reported*
+marginal cost when unconstrained. Inflating the report inflates the price
+G1 gets paid (0.202 → 0.511 EUR/MVArh at factor=3) faster than it reduces
+the Q actually delivered (2.08 → 1.48 MVAr) — true cost stays low
+throughout, so profit rises monotonically with the size of the lie.
+
+**This is not a bug in the settlement code — it's the textbook,
+well-documented failure mode of self-reported-marginal-cost pricing
+(exactly why real LMP markets need bid mitigation/caps), and it is direct,
+concrete confirmation of §5's caveat**: scheme 2a is incentive-consistent
+*only* as long as generators report truthfully; nothing in the current
+architecture enforces that, and this experiment shows the incentive to
+deviate is large, not marginal, for a single generator acting alone (no
+coordination with G2/G3/G4 needed to profit). It also sharpens §3's
+market-power point — this is exactly the "must-run manipulation" failure
+mode Wolgast et al. flag as understudied for reactive power markets
+specifically. **Honest framing for the slide**: "a physically-derived
+utilisation price is the right *reference* price for an administered
+market, but a genuine bid-based market on this scheme would need bid
+mitigation or a strategy-proof mechanism (VCG-style, §3) — this experiment
+demonstrates why, cheaply, rather than just asserting it."
+
+## 7. Recommendation: what to do before running further scenarios
 
 1. State the post-hoc architecture's scope limit explicitly on the slide
    (§4) — this is a documentation task, zero new compute.
