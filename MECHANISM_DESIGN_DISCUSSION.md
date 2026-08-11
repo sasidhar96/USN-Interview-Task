@@ -198,7 +198,112 @@ illustration, not a full equilibrium analysis. This is the Tier-3
 (`review/00_synthesis.md`), and it's the only piece of this whole
 discussion that's actually cheap to build.
 
-## 5. Recommendation: what to do before running further scenarios
+## 5. Where does the incentive actually live? (Follow-up, resolving a real point of confusion)
+
+Sharpened after a direct back-and-forth: "the optimizer doesn't care about
+anything not in the objective function — so if the goal is to *incentivize*
+generators, shouldn't the incentive be *in* the objective?" This is correct,
+and the answer is: **it already is — just not the part you'd expect.**
+"Incentivize" bundles two genuinely different questions, and this project
+answers them with two different mechanisms, deliberately:
+
+### 5a. "What should each generator do?" — answered *inside* the objective, not post-hoc
+
+`C_g^Q(P_g,Q_g,V_g)` (`PhysicalCost`) is a term in the OPF's objective
+(§4.1 of `CLAUDE.md`) — solving the OPF **is** the act of incentivizing the
+right dispatch, in exactly the same architectural sense as Potter et al.'s
+`b^Q Q` term in their own objective (§ below). Comparing `AssumedCost` vs
+`PhysicalCost` vs `DeadbandCost` (Cases A/B/D) is comparing three different
+answers to "what should the objective reward," and each one **does** change
+the actual dispatch — verified directly by `test_cost_models_actually_swap`.
+None of this is post-hoc.
+
+### 5b. "How should the DSO pay for what already happened?" — this is the post-hoc part
+
+Given the dispatch that (5a) already produced, `src/settlement.py`'s four
+payment rules (capacity/nodal/uniform/AWU/hybrid) answer a *different*
+question: how to split the resulting cash. This is what stays post-hoc, and
+it's a legitimately separate question from (5a) — real DSOs and ISOs also
+split "what's the efficient dispatch" (an engineering/optimization question)
+from "who gets paid what for it" (a distributive/revenue-adequacy question).
+
+### The nodal scheme (2a) is not an arbitrary post-hoc formula — it's constructed to match (5a)
+
+This is the resolving point. Scheme 2a pays `λ^Q_bus × Q_delivered`, where
+`λ^Q_bus` is the **dual** of the same reactive-balance constraint that the
+`C_g^Q` objective term already shaped. `test_price_at_unconstrained_generator_equals_its_marginal_cost`
+proves directly that at any unconstrained generator, `λ^Q_bus` **equals that
+generator's own marginal cost** `∂C_g^Q/∂Q` at the solution. That equality —
+price equals marginal cost — is precisely the condition under which a
+*self-interested, price-taking* generator would voluntarily choose to
+produce exactly the `Q` the centralized OPF already gave it (standard
+LMP-market theory: this is why real energy markets use marginal-cost
+pricing at all). **So scheme 2a's payment isn't just "a" post-hoc rule — of
+the four schemes, it's the one specifically incentive-consistent with the
+dispatch that (5a) already computed.** If the generators actually got to
+choose for themselves facing that price, nothing would change.
+
+What this does *not* resolve: whether generators would behave this way in a
+real, decentralized, strategic setting rather than the fully centralized
+setting modelled here (§3's small-N market-power concern) — that gap is
+exactly the bilevel/game-theory question from §4, still open.
+
+**Scheme 1 (capacity), by contrast, has zero Q-dependence in its formula** —
+it pays the same whether a generator delivers its full reactive capability
+or none at all. It incentivizes *installing* capability, not *delivering*
+it. That's not a flaw in the scheme (capacity/availability payments are a
+real, standard ancillary-service instrument for exactly this purpose — long-
+run investment signal, not short-run dispatch signal), but it's worth being
+precise that scheme 1 alone does not incentivize supply in the delivery
+sense the word usually implies; scheme 3 (hybrid) exists specifically to
+combine both signals.
+
+### Every price in the objective, enumerated — inputs vs. the one output
+
+| Symbol | What it prices | Value / source | Input or output? |
+|---|---|---|---|
+| `λ_E` | energy (`P_slack`, and implicitly all network losses) | 70 EUR/MWh, SysOpt WP4 | **Input** — chosen before solving |
+| `π_Q` | reactive exchange at the TSO-DSO interface | Lnett HV tariff: 3.478 EUR/MVArh winter, 0.435 summer | **Input** |
+| `c_g^P` | each generator's own active energy | `= λ_E` by the water-value convention | **Input** — a modeling choice, not an independently sourced number |
+| `C_g^Q(P,Q,V)` | each generator's own reactive service | a *function*, not a number — built from `R_a, X_s, k_f` (Karekezi-cited for G1/G3, illustrative for G2/G4) and `λ_E` | **Input** — no separate "price coefficient" needed; this is the whole contribution (cf. Case A's `0.1·λ_E`, which *is* an assumed input coefficient) |
+| `λ^Q_bus` | the nodal reactive price everyone actually calls "the price" | — | **Output** — the dual of the reactive-balance constraint, extracted *after* solving; used only by the settlement layer (5b), never fed back as an objective input |
+
+### Is our direction right?
+
+Yes, with the two-part framing above made explicit on the slide: "we
+incentivize efficient reactive dispatch by pricing it correctly *inside* the
+objective (physically derived, not assumed — §6a), and we incentivize fair
+compensation for that dispatch via settlement rules structured to match the
+resulting shadow price where possible (nodal, §6b)." That is a complete,
+honest, defensible answer to "how do you incentivize hydro generators to
+supply reactive power" — it just uses two different mechanisms for two
+different sub-questions, deliberately, not by oversight.
+
+### Potter, precisely, on the same two questions
+
+Their `b^Q Q` term lives in the same place as our `C_g^Q` — inside the
+objective, answering (5a). Their d-LMP payment (their eq. 12, a **daily
+Q-weighted average** of the real-time dual, used specifically to reduce
+settlement volatility while dispatch still follows the real-time clearing)
+is architecturally the same instrument as our nodal scheme 2a, answering
+(5b) the same way. **They do not offer a capacity/availability scheme at
+all** — a real, substantive difference from this project, not just a
+detail. Their own paper argues explicitly against capacity payments,
+because their target resource (DER smart inverters) has heterogeneous,
+largely unobservable costs, so an administered capacity rate can't be set
+credibly. **The case for including a capacity scheme here is exactly the
+mirror image of their argument, not a contradiction of it**: dispatchable
+synchronous hydro has a small number of large, well-characterized,
+cost-analyzable units — precisely the population the literature says
+capacity/cost-based administered pricing is suited to (per the Brain: "This
+cost-based compensation is commonly used today... generally limited to
+large traditional generators who can afford the cost analyses... most DGs
+[are] not [as] applicable"). Potter is right to reject capacity payment for
+their DER context; it's right to include it for this project's hydro
+context — same literature, opposite resource, opposite conclusion, both
+correct.
+
+## 6. Recommendation: what to do before running further scenarios
 
 1. State the post-hoc architecture's scope limit explicitly on the slide
    (§4) — this is a documentation task, zero new compute.
