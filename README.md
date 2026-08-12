@@ -8,11 +8,18 @@ be trusted at a higher confidence than its tag here.
 
 **Read in this order:**
 1. This file — network, data, machine, and OPF provenance (what's real vs. illustrative).
-2. [`CLAUDE.md`](CLAUDE.md) — the full implementation spec as actually built, including every fix applied and why.
-3. [`RESULTS_ANALYSIS.md`](RESULTS_ANALYSIS.md) — the 2,915-hour real-data study results.
-4. [`TECHNICAL_VALIDATION.md`](TECHNICAL_VALIDATION.md) — does the optimization actually make sense (optimality, losses, settlement economics, capability limits).
-5. [`MECHANISM_DESIGN_DISCUSSION.md`](MECHANISM_DESIGN_DISCUSSION.md) — LOC, bid-market feasibility with few participants, and post-hoc vs. game-theoretic settlement, grounded in the literature.
-6. [`review/00_synthesis.md`](review/00_synthesis.md) — 4 independent blind-review reports (zero shared context) and how each finding was fixed.
+2. [`CASE_STUDY_AND_METHODOLOGY.md`](CASE_STUDY_AND_METHODOLOGY.md) — the current, full-year
+   (8,675-hour) study end to end: formulation, every settlement scheme, the ownership-fairness
+   finding, system-cost and reactive-procurement-cost savings, and the active-vs-reactive
+   locational-pricing comparison. This supersedes the numbers in §7 below wherever they disagree
+   — this file's §7 is the original, smaller-sample study kept for provenance.
+3. [`KEY_FINDINGS.md`](KEY_FINDINGS.md) — every distinct finding from the project, one line
+   each, grouped by theme, for pulling into slides without re-deriving anything.
+4. [`CLAUDE.md`](CLAUDE.md) — the full implementation spec as actually built, including every fix applied and why.
+5. [`RESULTS_ANALYSIS.md`](RESULTS_ANALYSIS.md) — the original 2,915-hour real-data study results.
+6. [`TECHNICAL_VALIDATION.md`](TECHNICAL_VALIDATION.md) — does the optimization actually make sense (optimality, losses, settlement economics, capability limits).
+7. [`MECHANISM_DESIGN_DISCUSSION.md`](MECHANISM_DESIGN_DISCUSSION.md) — LOC, bid-market feasibility with few participants, and post-hoc vs. game-theoretic settlement, grounded in the literature.
+8. [`review/00_synthesis.md`](review/00_synthesis.md) — 4 independent blind-review reports (zero shared context) and how each finding was fixed.
 
 **Not in this repo, intentionally:** the source PDFs used for citation
 (Karekezi et al. 2023, Potter et al. 2023, and others) are excluded from
@@ -335,6 +342,18 @@ basis (how the price multiplying delivered Q is computed).
 | 2c | Utilisation, area-wise-uniform (AWU) | `payment_g = λ̄^Q_zone(g) · Q_g` (averaged within G's feeder zone) | Wolgast's AWU category — CIGRE MV's two independently-transformed feeders are the zone boundary, a real topological split, not an arbitrary one |
 | 3 | Hybrid | `payment_g = π_cap·S_rated,g + λ_g^Q·Q_g` (full stack, nodal pricing, not blended) | Standard real capacity+energy ancillary market structure (e.g. PJM): two separate, additive revenue streams |
 
+Two more were added later, once the settlement code was generalised past the two-feeder split
+(`src/settlement.py:THREE_ZONES`, `performance_adjusted_capacity`):
+
+| 2d | Utilisation, AWU 3-zone | same as 2c, but feeder 1 split into near/far by real BFS hop-distance from its head, feeder 2 kept whole | Splits two generators (G1, G2) a 2-zone split blends together despite a real ~24% price difference between them |
+| 4 | Performance-adjusted capacity | `payment_g = π_cap · |Q_g|` | Fixes flat capacity's zero-marginal-incentive flaw, but at the real Statnett rate recovers *less* than plain capacity (§7) — a real rate-vs-formula trade-off, not a bug |
+
+**Hybrid turned out to be exactly redundant as a distinct number** — `payment_hybrid = payment_capacity + payment_nodal`
+to 4.4e-16 precision, checked directly, not assumed — so it carries no information the two
+component schemes don't already have on their own. Its *component* effect is still worth
+knowing: the capacity floor materially helps the two chronically underpaid generators (§7),
+even though the combined total is just arithmetic.
+
 **Full generator profit** (`src/settlement.py`):
 ```
 profit_g = revenue_p,g + payment_g − service_cost_g − gen_cost_g
@@ -363,6 +382,18 @@ two days from a deadline. Every scheme above is administratively set (a rate
 or a rule), which is also what >90% of real-world reactive-power procurement
 actually is — closer to current practice, not a step away from it.
 
+That said, the gap this leaves is real and was tested directly, not just
+argued: `withholding_experiment.py` has a generator misreport its own cost
+under nodal settlement — profitable in 84 of 84 trials. And the fleet-aggregate
+recovery numbers in §7 hide a generator (G2) that fails individual rationality
+even under the best-performing scheme tested — a rational independent owner
+has no reason to participate voluntarily at that price. Both are evidence for,
+not against, eventually needing the bid-clearing layer above — `game_theory_approach/`
+is a first, unreviewed step in that direction (CI-OPF + McCormick convexification);
+it self-gates honestly (flags `REJECT_FOR_KKT_MPEC` rather than silently reporting a
+bad relaxation) but hasn't had its own adversarial review yet and shouldn't be quoted
+as validated.
+
 `π_cap` and the TSO-DSO interface charge `π_Q` both use the **same** Lnett
 HV rate (verified against `tariffhefte fra 1. januar 2026`): **40 kr/kVAr
 winter (Oct–Mar), 5 kr/kVAr summer (Apr–Sep)**, converted at an
@@ -371,41 +402,39 @@ withdrawal tariff charged to consumers, reused here as an upper-bound proxy
 for the value of reactive supply — no verified Norwegian rate exists for
 paying a distribution-connected generator. Flagged, not hidden.
 
-## 7. Results — see `RESULTS_ANALYSIS.md` and `TECHNICAL_VALIDATION.md` for the full study
+## 7. Results — see `CASE_STUDY_AND_METHODOLOGY.md` for the current, full-year study
 
-The paragraphs below (base-case, 2-generator scale checks) are the original
-scoping results and are kept for provenance, but **the current headline
-results are from the full 2,915-hour, 4-generator, real-CINELDI-data study**
-(`run_monthly_analysis.py --water-value`), not from these smaller checks.
-Read `RESULTS_ANALYSIS.md` first for what that run actually shows; the
-highlights:
+**Everything below this line is the original, smaller-sample study, kept for provenance.**
+It was superseded by a full 8,675-hour (99.0% of the year), 4-generator run once the Q_ref
+infeasibility bug (§4) was fixed — read `CASE_STUDY_AND_METHODOLOGY.md` Part 6 for the
+current numbers, not these. The headline differences, so you don't have to cross-reference:
 
-- **98.7% solve rate** (2,915/2,952 real hours), skips scattered not
-  clustered — no systemic convergence problem at these parameters.
-- **Reactive prices land at 0.16–0.18% of the energy price** — comfortably
-  inside the literature's own "well-designed reactive market prices should
-  be <1% of active power prices" rule of thumb (Wolgast et al. 2022), and
-  ~28x below Potter's own assumed 0.1x convention (10%) at typical load.
-- **The real Statnett fos §15 capacity rate recovers only 9.7%** of this
-  fleet's actual reactive-service cost; nodal utilisation pricing gets to
-  80.7%, hybrid to 90.4% — the strongest single quantified finding in the
-  study for "how should this be incentivized."
-- **Coordination does not reliably reduce network losses** (worse than the
-  fixed-voltage baseline in 46% of real hours) — it trades losses for
-  reduced reactive-import cost at the TSO-DSO interface. It **does**
-  reliably cap peak line congestion (47% max coordinated vs. 96% max
-  baseline) — congestion management, not loss reduction, is the honest
-  "coordination helps" claim.
-- **The field-current limit never binds**, in any of the 2,915 hours, for
-  any of the 4 generators — not because the limit is mis-specified (verified
-  geometrically to be the tighter constraint at each machine's own rated
-  point) but because this fleet's installed capacity exceeds real feeder
-  demand most hours. Loss-of-opportunity-cost (`src/settlement.py`) is
-  therefore correctly ~0 throughout — see `MECHANISM_DESIGN_DISCUSSION.md`
-  §2 for why that's the right behaviour, not a gap.
-- **Optimality**: 12 real hours × 5 randomized restarts each agree to a
-  relative spread ≤2.5×10⁻¹²; an independent differential-evolution
-  cross-check agrees with IPOPT to 0.00075%.
+- Capacity recovers 11.4% of real service cost (not 9.7%), nodal 95.7% (not 80.7%), hybrid
+  107.0% (not 90.4%) — corrected once Q_ref replaced the infeasible bare Q* reference point.
+- Fleet-aggregate 95.7% nodal recovery hides a 0.3%–120.6% spread across the four individual
+  generators — not visible in the original study, which only reported fleet totals.
+- Reactive-power procurement cost specifically (not diluted by active-power cost) drops 84%
+  under coordination, full year — 71,041.93 → 11,244.93 EUR/year.
+- Active power's locational price is ~50x flatter across the network than reactive power's
+  (CV 0.53% vs 26.62%) — the quantified reason the pricing *basis* choice matters enormously
+  for Q and barely at all for P.
+
+What still holds, unchanged, at full-year scale — everything below this point remains true,
+just re-verified at 3x the sample size:
+
+- **99.0% solve rate** (8,675/8,760 real hours), skips scattered not clustered.
+- **Coordination does not reliably reduce network losses** — it trades losses for reduced
+  reactive-import cost at the TSO-DSO interface. It **does** reliably cap peak line congestion
+  (47.1% max coordinated vs. 99.75% max baseline, i.e. baseline gets to within a quarter
+  percent of a real thermal violation at least once in the year) — congestion management, not
+  loss reduction, is the honest "coordination helps" claim.
+- **The field-current limit never binds**, any of the 8,675 hours, any of the 4 generators —
+  not because the limit is mis-specified (verified geometrically to be the tighter constraint
+  at each machine's own rated point) but because this fleet's installed capacity exceeds real
+  feeder demand almost every hour of the year. Loss-of-opportunity-cost is therefore correctly
+  ~0 throughout — see `MECHANISM_DESIGN_DISCUSSION.md` §2 for why that's the right behaviour.
+- **Optimality**: 12 real hours × 5 randomized restarts each agree to a relative spread
+  ≤2.5×10⁻¹²; an independent differential-evolution cross-check agrees with IPOPT to 0.00075%.
 
 ### Original scoping results (2-generator / base-case, kept for provenance)
 
@@ -446,12 +475,25 @@ jointly infeasible on this small, tightly-coupled network).
 
 ## 8. Known open items -- not yet done
 
-- Network diagram: correct but visually schematic (pandapower's auto-layout, no GPS coordinates in CIGRE MV) -- polish deferred.
 - FX rate (11.5 NOK/EUR) not live-verified.
-- No true 8760-hour annual integration -- `seasonal.csv` extrapolates from 4 representative hours x hours-in-season.
 - Transformer thermal limits not enforced (each carries its own pandapower `sn_mva`; only `net.line` current is constrained).
 - The LV diagnostic (`explore_lv_case.py`) still uses the original 2-generator, pre-Karekezi machine parameters -- not yet updated to match `run_experiments.py`'s 4-generator fleet.
-- Exact mechanism behind why coordination increases losses (see SS7) is understood at the level of "voltage moves to the top of its band, widening capability envelopes, which increases reactive flow" -- confirmed by direct comparison of the two solves, not fully decomposed line-by-line into which specific effect (voltage, reactive flow, or capability-envelope widening) dominates quantitatively.
+- `game_theory_approach/` (bilevel/CI-OPF exploration, built separately) has not had its own adversarial review -- don't quote numbers from it.
+- Two citations weren't independently re-verified in the most recent pass: the 0.86
+  leading-power-factor grid-code figure (de Brito et al. 2025) and the Lnett tariff numbers
+  (checked against the primary tariff sheet in an earlier session, not re-checked since) --
+  everything else in `CASE_STUDY_AND_METHODOLOGY.md`'s citation table was checked directly
+  against the source PDF this pass, these two weren't.
+- Placement experiment only covers a 4-month sample (2/3/4-generator fleets x 7 bus layouts);
+  a full-year rerun wasn't done given how much slower it is than the pricing-scheme run alone.
+
+Resolved since the paragraphs above were written, kept here as a change log rather than
+silently deleted: the 8760-hour annual integration now exists (`run_fullyear_pricing.py`,
+§9); the network diagram is regenerated from the actual loaded topology rather than
+pandapower's auto-layout (`scripts/make_network_diagram.py`); and the loss-increase
+mechanism (§7's "coordination increases losses" line) is now understood as one symptom of
+the more general and more defensible finding -- coordination minimises total system cost,
+and losses are just one term in that cost that can rationally go either way.
 
 ## 9. Reproduce
 
@@ -459,10 +501,29 @@ jointly infeasible on this small, tightly-coupled network).
 pip install -r requirements.txt
 pytest tests/ -q                          # 22 tests
 python run_experiments.py                 # base case, sweep, sensitivity, schemes, figures 0-4
-python run_monthly_analysis.py --water-value   # the main 2,915-hour real-data study (~1 hour)
+python run_monthly_analysis.py --water-value   # the original 2,915-hour real-data study (~1 hour)
 python analyze_waterval_results.py        # 7 diagnostic figures from that study
 python verify_with_metaheuristic.py       # independent differential-evolution optimality cross-check
 ```
+
+**The current, full-year study** (what `CASE_STUDY_AND_METHODOLOGY.md` and `KEY_FINDINGS.md`
+are built from) needs one more run, and it's slow enough on a laptop that it's worth doing on
+a second machine if you have one — see `run_fullyear_pricing.py`'s own comments for what it
+solves (two AC-OPFs, baseline and coordinated, times 8,760 hours):
+
+```bash
+python run_fullyear_pricing.py            # writes results/pricing_mechanisms_fullyear.csv (~1.5-2h, 12 workers)
+python placement_experiment.py            # generator-siting sensitivity, 7 layouts x 4 months (~3.5h, 12 workers)
+python scripts/make_network_diagram.py    # results/figures/network_diagram.png
+python scripts/make_slide_figures.py      # recovery-by-scheme, recovery-per-generator, dispatch-by-machine
+python scripts/make_system_cost_figure.py # results/figures/fig_system_cost.png
+python scripts/make_p_vs_q_figure.py      # the active-vs-reactive locational-pricing figures
+python withholding_experiment.py          # the 84/84 gameability check under nodal settlement
+```
+
+The `scripts/` ones need to run from the repo root (they import `run_experiments`/`src.*` by
+adding the parent directory to `sys.path`, same as any other script here) — `results/figures/`
+paths are all relative to wherever you invoke Python from, not to the script's own location.
 
 The CINELDI dataset subset actually used (`data/raw/cineldi_lv/dataset/50_bus_rural_reference_grid/`)
 is included in this repo for reproducibility; the other three grid variants
