@@ -85,7 +85,7 @@ standalone claim you can drop onto a slide or into discussion; source section in
 21. **Nodal pricing is genuinely locational, not a relabeled flat rate** — verified directly
     on real data that per-bus prices differ meaningfully hour to hour. (§3.2)
 22. **The real Statnett capacity mechanism recovers only 11.4%** of this fleet's actual
-    physical reactive-service cost — an order-of-magnitude illustration of the compensation
+    modeled incremental machine-loss cost — an order-of-magnitude illustration of the compensation
     gap this project studies. (§6.2)
 23. **Nodal pricing gets closest to full aggregate service-cost recovery** — 95.7%, because
     it's the only tested scheme that pays each generator at its own location's true
@@ -164,51 +164,28 @@ standalone claim you can drop onto a slide or into discussion; source section in
     within-zone active-power price differences are genuinely small, exactly what finding 39
     shows computationally for this network too. (§6.1b)
 
-## H. Generator placement
+## H. Incentive-design boundary and the honest limits of this work
 
-43. **Generator siting has a large, real effect on operational feasibility** — a "remote"
-    4-generator layout (4–5 hops from the feeder head) solves as few as 41.8% of real hours,
-    vs. 98–100% for the current/production layout. Placement affects whether the dispatch
-    exists at all, not just its economics.
-44. **Placement's effect on average losses is small and non-monotonic** — not the dominant
-    story — but its effect on **congestion** (worst-case line loading rises with distance
-    from the feeder head) and **locational fairness** (nodal recovery drops for remote
-    placement) is clear and consistent.
-45. **Neither extreme is optimal**: siting generators right at the feeder head (0 hops) also
-    degrades feasibility (fragile light-load voltage margin) — there's a real interior
-    "sweet spot," not a monotonic "closer is always better" relationship.
-
-## I. Incentive design, gaming, and the honest limits of this work
-
-46. **Post-hoc settlement provably does not change dispatch** — proven, not just argued, by
+43. **Post-hoc settlement does not change dispatch** — by construction, every scheme uses
     finding 15. Every settlement scheme answers "how to pay for an already-fixed optimal
     outcome," never "does the payment scheme change behavior." (§4.1, §7.1)
-47. **A direct withholding experiment found misreporting cost was profitable in 84 of 84
-    trials** under nodal settlement — concrete, quantified evidence the current
-    architecture, exactly as specified, is gameable by a strategic, self-interested
-    generator. (§7.1)
-48. **An exploratory bilevel/convexified (CI-OPF/McCormick) extension exists and honestly
-    self-gates** — it flags its own dispatch-error validation failures
-    (`REJECT_FOR_KKT_MPEC`) rather than silently reporting a result when the convex
-    relaxation diverges too far from the true AC-OPF. Not yet independently reviewed; not
-    presented as validated. (§7.2)
-49. **Individual rationality fails for at least one generator (G2) even under the best-
+44. **Individual rationality fails for at least one generator (G2) even under the best-
     performing centralized mechanism tested** — the sharp, quantified argument for why a
     real bidding/negotiated market is the necessary next step, not an optional refinement.
     (§7.1, finding 32)
 
-## J. Literature and citation verification
+## I. Literature and citation verification
 
-50. **Potter et al.'s assumed reactive cost coefficient — the entire premise this project's
+45. **Potter et al.'s assumed reactive cost coefficient — the entire premise this project's
     thesis contrasts against — verified word-for-word**: $b^Q_j = 0.1\,b^P_j$, explicitly
     motivated by citing a 2014 FERC report finding reactive prices are often one-tenth of
     real power prices. Checked directly against the paper, not a summary.
-51. **Statnett's real capacity (250 NOK/MVA/yr) and variable ($k=0.012/0.007$, ±40%/−20%
+46. **Statnett's real capacity (250 NOK/MVA/yr) and variable ($k=0.012/0.007$, ±40%/−20%
     threshold) settlement formulas verified word-for-word** against the primary 2024
     decision PDF.
-52. **Norway's 89.9% hydro share (2025) verified directly against Statistics Norway (SSB)**,
+47. **Norway's 89.9% hydro share (2025) verified directly against Statistics Norway (SSB)**,
     not asserted from memory.
-53. **Karekezi et al.'s cited machine parameters verified exactly** against the paper's own
+48. **Karekezi et al.'s cited machine parameters verified exactly** against the paper's own
     Tables I and II — with one honest nuance surfaced: the paper's *later* section (Table
     VII) uses a slightly different parameterization for what it also calls "the 103 MVA
     machine" — an inconsistency inside the source paper itself, not in this project's

@@ -1,43 +1,33 @@
-"""4-month hourly analysis: December+January (winter) + June+July (summer),
-real per-bus CINELDI-shaped demand, one full AC OPF solve per real hour.
+"""Hourly AC-OPF and settlement engine used by the full-year study.
 
 Scheme 0 (baseline, fixed-voltage) needs its own OPF solve; Schemes 1/2a/3
 (capacity / utilisation-nodal / hybrid) are all different payment formulas
 applied to the SAME coordinated (physical-cost) solve -- see src/settlement.py
 -- so each hour costs exactly two OPF solves, not four.
 
-    python run_monthly_analysis.py            # full 4-month, 4-generator run
-    python run_monthly_analysis.py --pilot 48  # first 48 hours only, for timing
-
-Writes results/monthly_hourly.csv (main run) and, separately,
-results/generator_count_comparison.csv (2/3/4-generator fleets, compared at
-representative hours only -- full hourly resolution for every fleet size
-would be tens of thousands of solves for a question that doesn't need that
-resolution to answer).
+The public entry point is ``run_fullyear_pricing.py``. This module retains the
+single-hour solve and parallel checkpointed runner used by that script.
 """
 
 from __future__ import annotations
 
-import sys
 import time
-from pathlib import Path
 
 import pandas as pd
 
-from src.case_data import GEN_BUSES, build_case_from_hour, load_profiles
+from src.case_data import build_case_from_hour, load_profiles
 from src.cost_models import PhysicalCost
 from src.settlement import (
     THREE_ZONES, capacity, cost_recovery, hybrid, load_side_charge,
     performance_adjusted_capacity, variable,
 )
-from run_experiments import (
+from src.study import (
     BASELINE_FIXED_VOLTAGE_BUSES, BASELINE_UNITY_PF_BUSES,
     ENERGY_PRICE, PI_CAP, Q_IMPORT_PRICE, Q_IMPORT_PRICE_SUMMER, V_SETPOINT, machines, solve,
 )
 
-RESULTS = Path(__file__).parent / "results"
 WINTER_MONTHS = {10, 11, 12, 1, 2, 3}
-STUDY_MONTHS = {12, 1, 6, 7}  # Dec+Jan (winter), Jun+Jul (summer)
+STUDY_MONTHS = set(range(1, 13))
 
 
 def _q_price_for(ts) -> float:
@@ -47,9 +37,7 @@ def _q_price_for(ts) -> float:
 def _baseline_convention(mach: dict) -> tuple[dict, set]:
     """Only the single LARGEST machine in this fleet holds a fixed voltage
     setpoint; everyone else runs at unity PF. Root-caused for the 4-generator
-    fleet (see BASELINE_FIXED_VOLTAGE_BUSES's own comment in run_experiments.py)
-    and generalised here for any fleet size, the same rule
-    generator_count_comparison() already uses.
+    fleet and generalized here for any fleet size.
     """
     largest = max(mach, key=lambda b: mach[b].s_rated)
     return {largest: V_SETPOINT}, set(mach) - {largest}
@@ -57,7 +45,7 @@ def _baseline_convention(mach: dict) -> tuple[dict, set]:
 
 def solve_hour(mach: dict, timestamp, p_cost_gen: float = 0.0,
                 fixed_voltage_buses: dict | None = None, unity_pf_buses: set | None = None) -> dict | None:
-    """One real hour, two OPF solves (baseline + coordinated), four schemes
+    """One real hour, two OPF solves (baseline + coordinated), seven settlements
     settled. Returns None -- never a partially-wrong row -- if either solve
     is not optimal.
 
@@ -89,12 +77,10 @@ def solve_hour(mach: dict, timestamp, p_cost_gen: float = 0.0,
         return None
 
     # PI_CAP, not q_price: capacity payment must use the real Statnett fos SS15
-    # generator-facing rate (see run_experiments.py's PI_CAP definition and
+    # generator-facing rate (see src/study.py's PI_CAP definition and
     # caveat), not the Lnett withdrawal tariff used for the utilisation price.
     # These are two structurally different instruments -- conflating them here
-    # was a ~1400x bug (q_price=3.478 vs PI_CAP=0.00248 EUR/MVArh), not a
-    # deliberate choice (contrast run_seasonal()'s use of q_price for pi_cap,
-    # which IS deliberate and documented there for that specific pre-PI_CAP run).
+    # would be a ~1400x error (q_price=3.478 vs PI_CAP=0.00248 EUR/MVArh).
     settlements = {
         "1_capacity": capacity(mach, coordinated, ENERGY_PRICE, PI_CAP, p_cost_gen=p_cost_gen),
         "2a_variable_nodal": variable(mach, coordinated, ENERGY_PRICE, pricing="nodal", p_cost_gen=p_cost_gen),
@@ -164,23 +150,6 @@ def solve_hour(mach: dict, timestamp, p_cost_gen: float = 0.0,
     return row
 
 
-def _fleet_configs() -> dict[str, dict[int, "Machine"]]:
-    """2-gen, 3-gen (x2), 4-gen -- the same four configurations already used
-    for the representative-hour comparison, now run at full hourly
-    resolution. Isolates G3's own effect from G4's own effect from their
-    combined interaction (the representative-hour study found the combined
-    4-gen effect is more than 3x the sum of either alone -- this is the full
-    check of that finding, not a new hypothesis).
-    """
-    full = machines()
-    return {
-        "2gen_G1G2": {GEN_BUSES[n]: full[GEN_BUSES[n]] for n in ("G1", "G2")},
-        "3gen_G1G2G3": {GEN_BUSES[n]: full[GEN_BUSES[n]] for n in ("G1", "G2", "G3")},
-        "3gen_G1G2G4": {GEN_BUSES[n]: full[GEN_BUSES[n]] for n in ("G1", "G2", "G4")},
-        "4gen_all": full,
-    }
-
-
 def _solve_one(args) -> dict | None:
     """Top-level, picklable worker for multiprocessing -- must NOT be a
     closure (that's exactly what broke the differential-evolution script
@@ -214,11 +183,9 @@ def run_all_configs_parallel(months: set[int] = STUDY_MONTHS, p_cost_gen: float 
                               configs: dict | None = None,
                               checkpoint_path: str | None = None,
                               checkpoint_every: int = 500) -> tuple[pd.DataFrame, list]:
-    """All 4 fleet configurations x the full study period, solved as one flat
+    """The configured fleet cases x the study period, solved as one flat
     pool of independent (config, hour) tasks across n_workers processes.
-    Independent tasks pooled together (not one config at a time) keeps every
-    worker busy throughout, rather than idling between configs of different
-    sizes/solve times.
+    Independent tasks are pooled together to keep every worker busy.
 
     `shards`/`n_shards` split the SAME deterministic task list across two
     machines with no overlap: task index i is assigned to shard `i % n_shards`,
@@ -229,10 +196,7 @@ def run_all_configs_parallel(months: set[int] = STUDY_MONTHS, p_cost_gen: float 
     side, since configs are the outer loop). Pass e.g. shards=(0,) n_shards=3
     for the 1/3 share, shards=(1,2) n_shards=3 for the 2/3 share.
 
-    `configs` overrides the default 4-way fleet-size sweep (`_fleet_configs()`)
-    -- pass e.g. `{"4gen_all": machines()}` to run only the validated
-    4-generator fleet (the full-year run uses this; the 2/3-gen comparisons
-    stay representative-hour-only, see `generator_count_comparison`).
+    `configs` may override the default production fleet.
 
     `checkpoint_path`, if given, writes the accumulated results to that CSV
     every `checkpoint_every` completed tasks -- for a run long enough that
@@ -245,7 +209,7 @@ def run_all_configs_parallel(months: set[int] = STUDY_MONTHS, p_cost_gen: float 
     import multiprocessing as mp
 
     if configs is None:
-        configs = _fleet_configs()
+        configs = {"4gen_current": machines()}
     p, _ = load_profiles()
     hours = p.index[p.index.month.isin(months)]
     if limit is not None:
@@ -280,110 +244,3 @@ def run_all_configs_parallel(months: set[int] = STUDY_MONTHS, p_cost_gen: float 
     if checkpoint_path:
         pd.DataFrame(rows).to_csv(checkpoint_path, index=False)
     return pd.DataFrame(rows), skipped
-
-
-def run_period(mach: dict, months: set[int], label: str, limit: int | None = None,
-               p_cost_gen: float = 0.0) -> tuple[pd.DataFrame, list]:
-    p, _ = load_profiles()
-    hours = p.index[p.index.month.isin(months)]
-    if limit is not None:
-        hours = hours[:limit]
-    rows, skipped = [], []
-    t0 = time.time()
-    for i, ts in enumerate(hours):
-        row = solve_hour(mach, ts, p_cost_gen=p_cost_gen)
-        (rows if row is not None else skipped).append(row if row is not None else str(ts))
-        if (i + 1) % 100 == 0 or (i + 1) == len(hours):
-            elapsed = time.time() - t0
-            rate = elapsed / (i + 1)
-            print(f"  [{label}] {i+1}/{len(hours)} hours, {elapsed:.0f}s elapsed "
-                  f"({rate:.2f}s/hour), {len(skipped)} skipped", flush=True)
-    return pd.DataFrame(rows), skipped
-
-
-def main():
-    limit = None
-    if "--pilot" in sys.argv:
-        limit = int(sys.argv[sys.argv.index("--pilot") + 1])
-    p_cost_gen = ENERGY_PRICE if "--water-value" in sys.argv else 0.0
-    tag = "_waterval" if p_cost_gen else ""
-
-    mach = machines()
-    label = f"4-gen, Dec+Jan+Jun+Jul, c_g^P={p_cost_gen:.0f}"
-    df, skipped = run_period(mach, STUDY_MONTHS, label, limit=limit, p_cost_gen=p_cost_gen)
-    RESULTS.mkdir(exist_ok=True)
-    out = RESULTS / f"monthly_hourly{tag}{'_pilot' if limit else ''}.csv"
-    df.to_csv(out, index=False)
-    print(f"\n{len(df)} hours solved, {len(skipped)} skipped, written to {out}")
-    if skipped:
-        skip_path = RESULTS / f"monthly_hourly{tag}{'_pilot' if limit else ''}_skipped.txt"
-        skip_path.write_text("\n".join(skipped))
-        print(f"skipped timestamps written to {skip_path}")
-
-
-def generator_count_comparison() -> pd.DataFrame:
-    """2-gen, 3-gen (x2), 4-gen fleets, compared at the same 4 representative
-    hours run_experiments.run_seasonal() already uses -- not full hourly
-    resolution, since this question (does count/placement matter) doesn't
-    need it to answer, and a full cross of 4 configs x 2920 hours would be
-    tens of thousands of solves for a question already partly answered.
-
-    Baseline convention scales with the fleet: the single LARGEST machine in
-    each configuration holds the fixed voltage setpoint, everyone else runs
-    at unity PF -- the same rule the 4-generator convention above reduces to,
-    not a special case invented just for this comparison.
-    """
-    from src.case_data import GEN_BUSES, demand_shapes
-    full = machines()
-
-    configs = {
-        "2-gen (G1,G2)": ("G1", "G2"),
-        "3-gen (G1,G2,G3)": ("G1", "G2", "G3"),
-        "3-gen (G1,G2,G4)": ("G1", "G2", "G4"),
-        "4-gen (all)": ("G1", "G2", "G3", "G4"),
-    }
-
-    shapes = demand_shapes()
-    total = shapes.p_scale
-    winter_mask = shapes.index.month.isin(WINTER_MONTHS)
-    summer_mask = ~winter_mask
-    points = {
-        "winter_peak": shapes[winter_mask].p_scale.idxmax(),
-        "winter_median": (total[winter_mask] - total[winter_mask].median()).abs().idxmin(),
-        "summer_peak": shapes[summer_mask].p_scale.idxmax(),
-        "summer_median": (total[summer_mask] - total[summer_mask].median()).abs().idxmin(),
-    }
-
-    rows = []
-    for config_label, names in configs.items():
-        mach = {GEN_BUSES[n]: full[GEN_BUSES[n]] for n in names}
-        largest = max(mach, key=lambda b: mach[b].s_rated)
-        fixed = {largest: V_SETPOINT}
-        unity = set(mach) - {largest}
-        for point_label, ts in points.items():
-            q_price = _q_price_for(ts)
-            net_c = build_case_from_hour(ts)
-            coord = solve(net_c, mach, PhysicalCost(ENERGY_PRICE), ENERGY_PRICE, q_import_price=q_price)
-            net_b = build_case_from_hour(ts)
-            base = solve(net_b, mach, PhysicalCost(ENERGY_PRICE), ENERGY_PRICE, q_import_price=q_price,
-                         fixed_voltage_buses=fixed, unity_pf_buses=unity)
-            rows.append({
-                "config": config_label, "point": point_label, "timestamp": ts,
-                "n_generators": len(mach),
-                "coord_status": coord.status, "base_status": base.status,
-                "coord_loss_mw": coord.losses_mw if coord.status == "optimal" else float("nan"),
-                "base_loss_mw": base.losses_mw if base.status == "optimal" else float("nan"),
-                "coord_vmin": min(coord.v.values()) if coord.status == "optimal" else float("nan"),
-                "coord_vmax": max(coord.v.values()) if coord.status == "optimal" else float("nan"),
-                "coord_max_line_loading_pct":
-                    max(coord.line_loading.values()) if coord.status == "optimal" and coord.line_loading else float("nan"),
-            })
-    return pd.DataFrame(rows)
-
-
-if __name__ == "__main__" and "--gen-count" in sys.argv:
-    df = generator_count_comparison()
-    df.to_csv(RESULTS / "generator_count_comparison.csv", index=False)
-    print(df.to_string(index=False))
-elif __name__ == "__main__":
-    main()

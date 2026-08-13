@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from run_experiments import GEN_BUSES
+from src.case_data import GEN_BUSES
 from src.settlement import FEEDER_ZONES
 
 df = pd.read_csv("results/pricing_mechanisms_fullyear.csv", low_memory=False)
@@ -83,7 +83,18 @@ print("saved results/figures/fig_price_variability_p_vs_q.png")
 # ---------------------------------------------------------------------------
 # Figure 2: what generators are actually paid, by pricing basis, P vs Q (standalone)
 # ---------------------------------------------------------------------------
-fig, ax2 = plt.subplots(figsize=(9, 6))
+default_style = plt.rcParams.copy()
+plt.rcParams.update({
+    "font.family": "Arial",
+    "font.size": 16,
+    "font.weight": "bold",
+    "axes.labelweight": "bold",
+    "axes.titleweight": "bold",
+    "axes.linewidth": 1.8,
+    "xtick.major.width": 1.6,
+    "ytick.major.width": 1.6,
+})
+fig, ax2 = plt.subplots(figsize=(10.5, 6.8))
 x = np.arange(3)
 w = 0.35
 bars_p = ax2.bar(x - w / 2, [p_pct_of_nodal[k] for k in ["Nodal", "Uniform", "AWU"]], width=w,
@@ -91,20 +102,29 @@ bars_p = ax2.bar(x - w / 2, [p_pct_of_nodal[k] for k in ["Nodal", "Uniform", "AW
 bars_q = ax2.bar(x + w / 2, [q_recovery[k] for k in ["Nodal", "Uniform", "AWU"]], width=w,
                   color=COL_Q, label="Reactive power (Q)")
 for b in bars_p:
-    ax2.text(b.get_x() + b.get_width() / 2, b.get_height() + 2, f"{b.get_height():.1f}%", ha="center", fontsize=10.5, fontweight="bold")
+    ax2.text(b.get_x() + b.get_width() / 2, b.get_height() + 2.2, f"{b.get_height():.1f}%",
+             ha="center", fontsize=17, fontweight="bold")
 for b in bars_q:
-    ax2.text(b.get_x() + b.get_width() / 2, b.get_height() + 2, f"{b.get_height():.1f}%", ha="center", fontsize=10.5, fontweight="bold")
-ax2.set_xticks(x); ax2.set_xticklabels(["Nodal", "Uniform", "AWU (zonal)"], fontsize=11)
-ax2.set_ylabel("P: revenue relative to nodal (%)\nQ: service-cost recovery (%)", fontsize=10.5)
-ax2.set_title("Changing the pricing basis barely moves P revenue,\nbut swings Q recovery by ~30 points",
-               fontsize=13.5, pad=14)
-ax2.set_ylim(0, 115)
-ax2.legend(fontsize=10, frameon=False, loc="lower left")
+    ax2.text(b.get_x() + b.get_width() / 2, b.get_height() + 2.2, f"{b.get_height():.1f}%",
+             ha="center", fontsize=17, fontweight="bold")
+ax2.set_xticks(x)
+ax2.set_xticklabels(["Nodal", "Uniform", "AWU (zonal)"], fontsize=16, fontweight="bold")
+ax2.set_ylabel("Relative revenue / cost recovery (%)", fontsize=16, fontweight="bold", labelpad=12)
+ax2.set_title("Pricing basis barely changes P revenue—\nbut shifts Q cost recovery by ~30 points",
+               fontsize=22, fontweight="bold", pad=18)
+ax2.set_ylim(0, 128)
+ax2.legend(frameon=False, loc="upper center", bbox_to_anchor=(0.5, 0.95), ncol=2,
+           columnspacing=2.0, prop={"weight": "bold", "size": 15})
 ax2.spines[["top", "right"]].set_visible(False)
-fig.text(0.5, -0.01, CAPTION + "; no separate active-power settlement layer needed", ha="center", fontsize=8.5, color="#666666")
-plt.tight_layout()
-plt.savefig("results/figures/fig_pricing_basis_sensitivity.png", dpi=200, bbox_inches="tight")
+ax2.tick_params(axis="y", labelsize=14)
+for label in ax2.get_yticklabels():
+    label.set_fontweight("bold")
+fig.text(0.5, 0.018, "Full-year 2021 · 8,675 solved hours · same AC-OPF dispatch",
+         ha="center", fontsize=12.5, fontweight="bold", color="#555555")
+plt.tight_layout(rect=[0, 0.06, 1, 1])
+plt.savefig("results/figures/fig_pricing_basis_sensitivity.png", dpi=300, bbox_inches="tight", facecolor="white")
 plt.close(fig)
+plt.rcParams.update(default_style)
 print("saved results/figures/fig_pricing_basis_sensitivity.png")
 
 print()

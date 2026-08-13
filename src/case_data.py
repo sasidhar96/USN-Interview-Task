@@ -178,7 +178,7 @@ def build_case(p_scale: float = 1.0, q_scale: float = 1.0) -> pp.pandapowerNet:
 
 
 # 13 CIGRE MV load buses, each mapped to a GROUP of real CINELDI households
-# (not one each -- see CLAUDE.md's session notes). CIGRE MV is extremely
+# (not one each -- see CASE_STUDY_AND_METHODOLOGY.md). CIGRE MV is extremely
 # skewed: buses 1 and 12 alone are 89% of total demand (19.84 and 20.01 MW);
 # the other 11 buses are all under 1 MW. A single real household's shape is a
 # reasonable granularity match for the small buses, but far too spiky to

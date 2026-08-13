@@ -2,7 +2,7 @@
 multi-panel figures):
 
   fig_recovery_by_scheme.png  -- slide 4: does the payment cover the
-      generator's own physical reactive-service cost, fleet aggregate,
+      modeled incremental machine-loss cost, fleet aggregate,
       one bar per scheme including baseline.
   fig_recovery_per_generator.png -- slide 4: same question, per generator,
       under nodal pricing only.
@@ -22,7 +22,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from run_experiments import machines, GEN_BUSES, PI_CAP
+from src.case_data import GEN_BUSES
+from src.study import PI_CAP, machines
 from src.cost_models import PhysicalCost
 
 df = pd.read_csv("results/pricing_mechanisms_fullyear.csv", low_memory=False)
@@ -40,31 +41,49 @@ service_cost_total = (df["1_capacity_total_payment_eur_h"] - df["1_capacity_tota
 # ---------------------------------------------------------------------------
 # Figure 1: recovery by scheme, fleet aggregate (single panel)
 # ---------------------------------------------------------------------------
-fig, ax = plt.subplots(figsize=(9, 5.5))
-schemes = [("0_baseline", "Baseline\n(today, no payment)"), ("1_capacity", "Capacity\n(fixed)"),
-           ("2a_variable_nodal", "Nodal\n(variable)"), ("2b_variable_uniform", "Uniform"),
+default_style = plt.rcParams.copy()
+plt.rcParams.update({
+    "font.family": "Arial",
+    "font.size": 16,
+    "font.weight": "bold",
+    "axes.labelweight": "bold",
+    "axes.titleweight": "bold",
+    "axes.linewidth": 1.8,
+    "xtick.major.width": 1.6,
+    "ytick.major.width": 1.6,
+})
+fig, ax = plt.subplots(figsize=(11.8, 6.8))
+schemes = [("0_baseline", "Baseline"), ("1_capacity", "Capacity\nfixed"),
+           ("2a_variable_nodal", "Nodal\nvariable"), ("2b_variable_uniform", "Uniform"),
            ("2c_variable_awu", "AWU\n2-zone"), ("2d_variable_awu3", "AWU\n3-zone"),
-           ("3_hybrid", "Hybrid\n(capacity + nodal)")]
+           ("3_hybrid", "Hybrid\ncapacity + nodal")]
 recoveries = []
 for s, _ in schemes:
     recoveries.append(0.0 if s == "0_baseline" else 100 * df[f"{s}_total_payment_eur_h"].sum() / service_cost_total)
 colors = [COL_BASE] + [COL_SCHEME] * (len(schemes) - 2) + ["#6a3d9a"]
 bars = ax.bar([l for _, l in schemes], recoveries, color=colors, width=0.62)
-ax.axhline(100, color=COL_GOOD, lw=1.2, ls="--", alpha=0.8)
-ax.text(0.3, 103, "100% = fully recovers physical service cost", fontsize=8.5, color=COL_GOOD, ha="left")
+ax.axhline(100, color=COL_GOOD, lw=2.2, ls="--", alpha=0.9)
+ax.text(0.25, 102.8, "100% = payment equals modeled incremental loss cost", fontsize=13,
+        fontweight="bold", color=COL_GOOD, ha="left")
 for b, v in zip(bars, recoveries):
-    ax.text(b.get_x() + b.get_width() / 2, v + 2.2, f"{v:.1f}%", ha="center", fontsize=10, fontweight="bold")
-ax.set_ylabel("% of generators' own reactive-service\ncost recovered (fleet aggregate)", fontsize=10)
-ax.set_title("Does the payment cover what it actually cost\nthe generator to provide reactive power?",
-              fontsize=12.5, pad=12)
+    ax.text(b.get_x() + b.get_width() / 2, v + 2.4, f"{v:.1f}%", ha="center",
+            fontsize=16, fontweight="bold")
+ax.set_ylabel("Modeled incremental Q cost recovered (%)", fontsize=16,
+              fontweight="bold", labelpad=12)
+ax.set_title("How much of the modeled incremental Q cost\ndoes each settlement scheme recover?",
+              fontsize=22, fontweight="bold", pad=18)
 ax.set_ylim(0, 122)
 ax.spines[["top", "right"]].set_visible(False)
-ax.tick_params(axis="x", labelsize=9)
-fig.text(0.5, -0.01, "Full year 2021, 8,675 real hours, production placement (bus 3/10/13/14)",
-          ha="center", fontsize=8, color="#666666")
-plt.tight_layout()
-plt.savefig("results/figures/fig_recovery_by_scheme.png", dpi=200, bbox_inches="tight")
+ax.tick_params(axis="x", labelsize=14)
+ax.tick_params(axis="y", labelsize=14)
+for label in ax.get_xticklabels():
+    label.set_fontweight("bold")
+fig.text(0.5, 0.018, "Full-year 2021 · 8,675 solved hours · fleet aggregate",
+          ha="center", fontsize=12.5, fontweight="bold", color="#555555")
+plt.tight_layout(rect=[0, 0.06, 1, 1])
+plt.savefig("results/figures/fig_recovery_by_scheme.png", dpi=300, bbox_inches="tight", facecolor="white")
 plt.close(fig)
+plt.rcParams.update(default_style)
 print("saved results/figures/fig_recovery_by_scheme.png")
 
 # ---------------------------------------------------------------------------

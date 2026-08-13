@@ -242,9 +242,9 @@ challenged: Type A parameters are real and traceable to a table in a peer-review
 Type B are physically plausible variations on the same machine family, used to give the
 fleet genuine cost heterogeneity, not independently verified.
 
-**Bus placement** (3/10/13/14) was itself tested against 6 alternative layouts (2/3/4-gen,
-head-of-feeder vs. remote placement) — this is the layout found to have the best combined
-feasibility and economic performance; see §7.7.
+**Bus placement** (3/10/13/14) is illustrative: two units are placed on each CIGRE feeder
+at different electrical distances from the upstream interface. The study evaluates pricing
+and settlement for this fixed production layout; it is not a generator-siting study.
 
 ### 2.2 The loss physics — source, and what was changed
 
@@ -773,27 +773,6 @@ winter specifically). This is the quantified reason local coordination has econo
 at all — without this price gap, there would be no incentive to use local generation for
 reactive support rather than simply drawing everything from the grid.
 
-### 6.6 Generator placement — acknowledged as a real, secondary finding
-
-A 4-month sensitivity (7 layouts, 2/3/4-generator fleets, current vs. head-of-feeder vs.
-remote bus placement — full detail in `PLACEMENT_ANALYSIS.md`) found that **placement
-affects operational feasibility and locational fairness, not primarily average losses**:
-
-- The current production layout (bus 3/10/13/14) solves 98–100% of real hours at every
-  fleet size; a "remote" layout (generators 4–5 hops from the feeder head) solves as few as
-  41.8% of hours at 4-gen scale — a real, structural feasibility degradation, not just a
-  worse economic outcome.
-- Placement changes which generator carries the reactive burden, and therefore how nodal
-  payment is distributed — directly compounding the ownership-fairness finding in §6.3:
-  where a generator sits and what it costs to run jointly determine how much reactive duty
-  it is dispatched for, and therefore how much it is paid.
-
-This project's primary scope is the pricing-scheme comparison, not a placement/siting
-study — placement is reported here as a real, acknowledged secondary finding that
-reinforces the fairness discussion, not pursued to the same depth as Part 6's core results.
-
----
-
 ## Part 7 — Discussion: what a post-hoc, centralized approach cannot answer, and what would be needed
 
 ### 7.1 The honest limit of everything above
@@ -806,13 +785,9 @@ strategic bidders. A real market has **independent asset owners who may misrepor
 own cost** to increase payment — this is not addressed by a fixed, centrally-computed
 dispatch, no matter how the settlement layer is designed on top of it.
 
-**Tested directly, not just argued**: a withholding experiment (`withholding_experiment.py`)
-found that misreporting cost was **profitable in 84 of 84 trials** under nodal settlement —
-direct, quantified evidence that the current architecture, exactly as specified, is
-gameable. This is expected, not a flaw specific to this implementation — it follows
-directly from settlement being computed *after* dispatch is fixed, so a generator has no
-way to influence the price it faces through its declared cost within this framework, but
-would in any real system where declared cost *feeds into* the clearing dispatch itself.
+Because bids and best responses are outside this model, it cannot establish incentive
+compatibility or quantify strategic withholding. Those questions require an endogenous
+bidding and market-clearing model rather than another post-hoc settlement calculation.
 
 ### 7.2 What the next step actually requires: a bilevel / bidding market
 
@@ -832,17 +807,6 @@ each generator's own best-response problem (an MPEC — mathematical program wit
 equilibrium constraints), which is itself non-convex and generally requires convex
 relaxation (e.g. McCormick envelopes on the bilinear terms that appear) to become
 tractable at all.
-
-**Preliminary exploration exists in this repository** (`game_theory_approach/`) — a
-convexified CI-OPF/McCormick reformulation and a strategic-market simulation, built as a
-first step toward this harder problem. It is **explicitly self-gated**: its own dispatch-error
-validation check marks itself `REJECT_FOR_KKT_MPEC` when the convex relaxation's dispatch
-diverges too far from the true AC-OPF solution, rather than silently reporting a result —
-an honest signal that convexification has a real fidelity cost. Its qualitative finding
-(strategic bidders can profit from misreporting under the tested mechanisms) is consistent
-with, and independently arrived at from, the withholding-experiment result above. **This
-module has not yet had a dedicated adversarial review and should not be presented as
-validated** — flagged as exploratory future work, not a result.
 
 ### 7.3 Why this is genuinely difficult, and why it matters for design
 
@@ -879,8 +843,7 @@ validated** — flagged as exploratory future work, not a result.
 > assumed coefficient the literature typically uses, and shows precisely how the choice of
 > payment mechanism redistributes that already-known cost. It deliberately does not attempt
 > to solve the harder, adjacent problem of eliciting true costs from strategic, independent
-> participants — that problem is real, it is where the withholding experiment and the
-> exploratory bilevel work point, and it is future work, not a gap in the current results.
+> participants — that problem is real and is future work, not a gap in the current results.
 
 ---
 

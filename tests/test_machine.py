@@ -7,20 +7,21 @@ from src.cost_models import AssumedCost, DeadbandCost, PhysicalCost
 from src.machine import Machine
 from src.case_data import build_case
 from src.opf import solve
-from run_experiments import GEN_BUSES, machines as _production_machines
+from src.case_data import GEN_BUSES
+from src.study import machines as _production_machines
 
 S_BASE = 1.0
 
 
 def g1() -> Machine:
-    # Pulled from run_experiments.machines() -- the actual production
+    # Pulled from src.study.machines() -- the actual production
     # fleet -- not a hand-duplicated parameter set. External review caught
     # that this file's own copy had drifted from production (r_a_pu=0.002
-    # here vs. the corrected 0.0026862 in run_experiments.py after the
+    # here vs. the corrected 0.0026862 in src/study.py after the
     # stray-load-loss fix), so every test below was silently exercising a
     # machine the study doesn't actually use. One source of truth now;
     # Karekezi et al. (2023) IEEE TEC 38(2) Tables I-II citation lives in
-    # run_experiments.machines()'s own docstring.
+    # src.study.machines()'s own docstring.
     return _production_machines()[GEN_BUSES["G1"]]
 
 
@@ -207,10 +208,10 @@ def test_deadband_cost_zero_inside_free_zone_positive_outside():
 
 
 def test_four_generator_fleet_solves():
-    """The full G1-G4 fleet (run_experiments.machines(), two feeders, two
+    """The full G1-G4 fleet (src.study.machines(), two feeders, two
     machine types) solves cleanly -- not just the original 2-generator pair.
     """
-    from run_experiments import ENERGY_PRICE, machines as fleet_machines
+    from src.study import ENERGY_PRICE, machines as fleet_machines
 
     net = build_case(1.0, 1.0)
     r = solve(net, fleet_machines(), PhysicalCost(ENERGY_PRICE), ENERGY_PRICE)

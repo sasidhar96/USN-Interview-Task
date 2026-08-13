@@ -21,7 +21,7 @@ and I_f is obtained from a saturated Potier-triangle construction (their eqs.
 difference, not a small one). Neither of those is implemented here: doing so
 would mean an implicit/root-solve relation inside the OPF, which is exactly
 the reason SynGenLib itself cannot be embedded directly in Pyomo (see
-DESIGN.md). The E_f^2-quadratic form kept here is closed-form and
+the project methodology). The E_f^2-quadratic form kept here is closed-form and
 differentiable, at the cost of that fidelity.
 
 Cross-checked, not just declared: with G1's parameters below, this model's
