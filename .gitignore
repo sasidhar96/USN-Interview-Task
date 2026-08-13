@@ -5,7 +5,19 @@ __pycache__/
 tmp/
 .DS_Store
 
-# Third-party copyrighted journal PDFs -- cited by DOI in README.md/CLAUDE.md,
+# Local presentation authoring and rendering artifacts
+.codex-*/
+.tmp_*/
+presentation_drafts/
+slide_style_audition/
+game_theory_approach/
+*.inspect.ndjson
+*.pptx
+tmp_potter*/
+results/figures/presentation/
+additional_files/references/*.pdf
+
+# Third-party copyrighted journal PDFs -- cited by DOI in the methodology,
 # not redistributed from this public repo.
 *.pdf
 
@@ -17,11 +29,28 @@ data/raw/cineldi_lv/dataset/39_bus_semi_urban_reference_grid/
 data/raw/cineldi_lv/dataset/56_bus_semi_urban_reference_grid/
 data/raw/cineldi_lv/dataset/80_bus_rural_reference_grid/
 
-# Run logs (verbose IPOPT chatter) and superseded/pilot result files --
-# the current, authoritative dataset is monthly_hourly_waterval_with_losses.csv
+# Run logs and superseded/pilot result files. The authoritative dataset is
+# results/pricing_mechanisms_fullyear.csv.
 results/*.log
 results/monthly_hourly.csv
 results/monthly_hourly_skipped.txt
 results/monthly_hourly_pilot.csv
 results/monthly_hourly_pilot_skipped.txt
 results/monthly_hourly_waterval_pilot.csv
+
+# Keep only the authoritative full-year result and compact validation outputs.
+results/*.csv
+!results/pricing_mechanisms_fullyear.csv
+results/*.txt
+
+# Keep only figures used to document or present the final study.
+results/figures/*.png
+!results/figures/fig0_demand_data.png
+!results/figures/fig1_capability.png
+!results/figures/network_diagram.png
+!results/figures/fig_dispatch_by_machine.png
+!results/figures/fig_recovery_by_scheme.png
+!results/figures/fig_recovery_per_generator.png
+!results/figures/fig_system_cost.png
+!results/figures/fig_price_variability_p_vs_q.png
+!results/figures/fig_pricing_basis_sensitivity.png

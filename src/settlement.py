@@ -65,11 +65,11 @@ def loss_of_opportunity_cost(machines: dict[int, Machine], r: OPFResult, energy_
     LOC_g = lambda_E * max(0, P_max,g - P_g)   when the field constraint binds
           = 0                                   otherwise
 
-    Not added to the OPF objective (CLAUDE.md SS3.4) and NOT subtracted in
+    Not added to the OPF objective (see the methodology in additional_files/) and NOT subtracted in
     `profit` either: `revenue_p` already uses the generator's actual
     (possibly reduced) P_g, so the foregone revenue is already reflected
     there. Subtracting LOC again on top would double-count it -- the same
-    principle CLAUDE.md applies to the OPF objective, one layer up in
+    principle the methodology applies to the OPF objective, one layer up in
     settlement. LOC is reported purely as a diagnostic: how much MORE this
     generator could have earned running flat-out at its own P_max.
     """
