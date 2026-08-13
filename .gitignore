@@ -15,6 +15,7 @@ game_theory_approach/
 *.pptx
 tmp_potter*/
 results/figures/presentation/
+additional_files/references/*.pdf
 
 # Third-party copyrighted journal PDFs -- cited by DOI in the methodology,
 # not redistributed from this public repo.
@@ -40,9 +41,6 @@ results/monthly_hourly_waterval_pilot.csv
 # Keep only the authoritative full-year result and compact validation outputs.
 results/*.csv
 !results/pricing_mechanisms_fullyear.csv
-!results/local_optimum_check.csv
-!results/multistart_check.csv
-!results/piq_sensitivity.csv
 results/*.txt
 
 # Keep only figures used to document or present the final study.

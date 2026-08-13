@@ -147,7 +147,7 @@ def build_model(
     generic pg/qg initial guess (0.6*p_max, Q*) with a specific starting
     point -- e.g. an adjacent hour's own solved dispatch. Tested directly:
     on hours known to hit IPOPT's iteration cap at c_g^P == energy_price
-    (a genuinely flat-objective regime, not a bug -- see run_monthly_analysis.py),
+    (a genuinely flat-objective regime, not a bug -- see hourly_runner.py),
     a plain p_min-based guess alone cut failures roughly in half (25 -> 17 of
     25 known-hard hours); a real adjacent-hour warm start is expected to do
     better still, since it starts from an actual nearby solution rather than
@@ -314,7 +314,7 @@ def solve(net, machines, cost_model, energy_price, init_seed: int | None = None,
         grid.theta_init = grid.theta_init + rng.uniform(-0.1, 0.1, grid.n)
     m, gen_at = build_model(grid, machines, cost_model, energy_price, **kwargs)
     # max_iter above IPOPT's default (3000): near c_g^P == energy_price the
-    # objective is flat in P to first order (see run_monthly_analysis.py),
+    # objective is flat in P to first order (see hourly_runner.py),
     # which slows convergence without making the problem infeasible --
     # confirmed directly, several hours that hit maxIterations at the
     # default converge cleanly to "optimal" with more room.

@@ -5,7 +5,7 @@ Scheme 0 (baseline, fixed-voltage) needs its own OPF solve; Schemes 1/2a/3
 applied to the SAME coordinated (physical-cost) solve -- see src/settlement.py
 -- so each hour costs exactly two OPF solves, not four.
 
-The public entry point is ``run_fullyear_pricing.py``. This module retains the
+The public entry point is ``run_study.py``. This module retains the
 single-hour solve and parallel checkpointed runner used by that script.
 """
 

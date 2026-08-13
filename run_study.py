@@ -1,13 +1,13 @@
 """Full-year production study for the bus 3/10/13/14 hydro fleet.
 
-    python run_fullyear_pricing.py
+    python run_study.py
 """
 from __future__ import annotations
 
 from pathlib import Path
 
 from src.study import ENERGY_PRICE, machines as _prod_machines
-from run_monthly_analysis import run_all_configs_parallel
+from src.hourly_runner import run_all_configs_parallel
 
 RESULTS = Path(__file__).parent / "results"
 

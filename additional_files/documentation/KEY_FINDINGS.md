@@ -2,7 +2,7 @@
 
 Every distinct, concrete finding produced by this project, grouped by theme. Each line is a
 standalone claim you can drop onto a slide or into discussion; source section in
-`CASE_STUDY_AND_METHODOLOGY.md` given where applicable.
+`additional_files/documentation/CASE_STUDY_AND_METHODOLOGY.md` given where applicable.
 
 ---
 
